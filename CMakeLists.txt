@@ -2,8 +2,8 @@
 cmake_minimum_required (VERSION 3.8 FATAL_ERROR)
 
 # Define the project name
-set(PROJECT_NAME "gw2 Rest api test")
-set(EXECUTABLE_NAME "gw2_rest_api_test")
+set(PROJECT_NAME "CPP_Rest_SDK_Test")
+set(EXECUTABLE_NAME "CPP_Rest_SDK_Test")
 project(${PROJECT_NAME} VERSION 0.1 LANGUAGES CXX)
 
 #generate a message
@@ -30,6 +30,9 @@ set(Boost_USE_STATIC_LIBS        ON) 	# only find static libs
 set(Boost_USE_MULTITHREADED      ON)
 set(Boost_USE_STATIC_RUNTIME    OFF)
 find_package(Boost 1.69.0 REQUIRED COMPONENTS system filesystem unit_test_framework serialization)
+find_package(cpprestsdk REQUIRED)
+
+find_package(Sqlite3 REQUIRED)
 
 ########################################
 # configure and find Qt5 (uncomment when used)

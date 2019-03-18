@@ -1,153 +1,95 @@
-#include <SFML/Graphics.hpp>
-#include <SFML/Audio.hpp>
-
+// main.cpp
+#include <sqlite3.h>
 #include <iostream>
+
+#include <cpprest/http_client.h>
+#include <cpprest/filestream.h>
+
 #include <boost/filesystem.hpp>
 
-#include "ParticleSystem.h"
-#include "TileMap.h"
-#include "Player.h"
-
+using namespace utility;                    // Common utilities like string conversions
+using namespace web;                        // Common features like URIs.
+using namespace web::http;                  // Common HTTP functionality
+using namespace web::http::client;          // HTTP client features
+using namespace concurrency::streams;       // Asynchronous streams
 
 int main()
 {
-	float factor = 2.f;
-	// define the level with an array of tile indices
-	const int level[] =
-	{
-		0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-		0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 2, 0, 0, 0, 0,
-		1, 1, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3,
-		0, 1, 0, 0, 2, 0, 3, 3, 3, 0, 1, 1, 1, 0, 0, 0,
-		0, 1, 1, 0, 3, 3, 3, 0, 0, 0, 1, 1, 1, 2, 0, 0,
-		0, 0, 1, 0, 3, 0, 2, 2, 0, 0, 1, 1, 1, 1, 2, 0,
-		2, 0, 1, 0, 3, 0, 2, 2, 2, 0, 1, 1, 1, 1, 1, 1,
-		0, 0, 1, 0, 3, 2, 2, 2, 0, 0, 0, 0, 1, 1, 1, 1,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	};
+	std::cout << "hello cpp rest sdk :D" << std::endl;
+	boost::filesystem::path full_path(boost::filesystem::current_path());
+	std::cout << "Current path is : " << full_path << std::endl;
 
-	// create the tilemap from the level definition
-	TileMap map;
-	if (!map.load("..\\graphics-vertex-array-tilemap-tileset.png", sf::Vector2u(32, 32), level, 16, 16))
-		return -1;
+	auto fileStream = std::make_shared<ostream>();
 
+	// Open stream to output file.
+	pplx::task<void> requestTask =			// requestTask is the asynchronos task.. the response from the server (may arrive fully in the future)
+		// first open a file stream (shared to make it available to all units)
+		fstream::open_ostream(U("results.html"))
 
+		.then([=](ostream outFile)
+		{
+			*fileStream = outFile;
 
-	sf::RenderWindow window(sf::VideoMode(512*factor, 512* factor), "SFML Sprites and Stuff");
-	window.setVerticalSyncEnabled(true); // to avoid visual artifacts such as tearing
-	// After above call, your application will run at the same frequency as the monitor's refresh rate. 
-	// window.setFramerateLimit(60); // force to use max fps
+			// Create http_client to send the request.
+			http_client client(U("https://api.guildwars2.com"));
 
-	// create the particle system
-	ParticleSystem particles(1000);
+			// Build request URI and start the request.
+			uri_builder builder(U("/v2/items"));
+			//builder.append_query(U("q"), U("cpprestsdk github"));
+			return client.request(methods::GET, builder.to_string());
+		})
 
-	// create a clock to track the elapsed time
-	sf::Clock clock;
+		// Handle response headers arriving.
+		.then([=](http_response response)		// "then" attaches a handler function to the task, which will be called asynchronolsy when the task completes
+		{
+			// Since we know the task has finished, calling ‘get()’ inside the callback function object is never going to block. (task.get)
+			printf("Received response status code:%u\n", response.status_code());
 
-	Player player(factor);
-	player.setFrequency(10);
+			// Write response body into the file.
+			//auto json_body = response.extract_json();
+			return response.body().read_to_end(fileStream->streambuf());
+		})
 
-	// run the program as long as the window is open
-	while (window.isOpen())
-	{
-		// check all the window's events that were triggered since the last iteration of the loop
-		sf::Event event;
+		// Close the file stream, once the writing is done
+		.then([=](size_t)
+		{
+			return fileStream->close();
+		})
 
-
-		while (window.pollEvent(event))
+		// you can add a task-based continuation at the end of the chain and handle all errors there.
+		.then([](pplx::task<void> requestTask)
 		{
 
-			switch (event.type) // event's members are only valid if they match corresponding the event type
+			// Wait for all the outstanding I/O to complete and handle any exceptions
+			try
 			{
-				// "close requested" event: we close the window
-				case sf::Event::Closed:
-					window.close();
-					break;
-
-					// key pressed
-				case sf::Event::KeyPressed:
-					/*
-					std::cout << "the " << event.key.code << " key was pressed" << std::endl;
-					std::cout << "control:" << event.key.control << std::endl;
-					std::cout << "alt:" << event.key.alt << std::endl;
-					std::cout << "shift:" << event.key.shift << std::endl;
-					std::cout << "system:" << event.key.system << std::endl;
-
-					if (event.key.code == sf::Keyboard::W)
-					{
-
-					}
-					if (event.key.code == sf::Keyboard::A)
-					{
-
-					}
-					if (event.key.code == sf::Keyboard::S)
-					{
-
-					}
-					if (event.key.code == sf::Keyboard::D)
-					{
-
-					}*/
-					break;
-
-					// we don't process other types of events
-				default:
-					break;
+				requestTask.get();	// get any exception procuded down the task chain
+				// note:   Only catch the exceptions that you can handle.
+				// If your app encounters an error that you can't recover from, it's better to let the app crash than to let it continue to run in an unknown state.
 			}
-		}
+			catch (pplx::task_canceled &tc)
+			{
+				printf("Task canceled exception:%s\n", tc.what());
+			}
+			catch (const std::exception &e)
+			{
+				printf("Error exception:%s\n", e.what());
+			}
 
-		//boost::filesystem::path full_path(boost::filesystem::current_path());
-		//std::cout << "Current path is : " << full_path << std::endl;
-
-
-		// position
-
-
-		// scale
-		//sprite.setScale(sf::Vector2f(0.5f, 2.f)); // absolute scale factor
-		map.setScale(sf::Vector2f(factor, factor));
-
-
-		// make the particle system emitter follow the mouse
-		sf::Vector2i mouse = sf::Mouse::getPosition(window);
-		particles.setEmitter(window.mapPixelToCoords(mouse));
-
-		// update it
-		sf::Time elapsedTime = clock.restart();
-		particles.update(elapsedTime);
-
-		////////////////
-		// clear the window with black color
-		window.clear(sf::Color::Black);
-		/////////////////////////////////////////////////////////////
-		// , sf::IntRect(32, 7, 13, 16)
-		// do something with the sprites...
-
-		// inside the main loop, between window.clear() and window.display()
-		window.draw(map);
-		window.draw(particles);
-
-		player.checkKeyboardInput();
-		window.draw(player);
+		})
+	;
 
 
-
-
-		/////////////////////////////////////////////////////////////
-		// draw everything here...
-		// window.draw(...);
-		// end the current frame
-		window.display();
-		////////////////
+	// Wait for all the outstanding I/O to complete and handle any exceptions
+	try
+	{
+		requestTask.wait();
+	}
+	catch (const std::exception &e)
+	{
+		printf("Error exception:%s\n", e.what());
 	}
 
+	std::cout << "end" << std::endl;
     return 0;
 }

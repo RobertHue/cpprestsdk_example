@@ -11,9 +11,9 @@ if( Boost_FOUND)
 		"*.cpp"
 	)
 	
-	include_directories(${Boost_INCLUDE_DIRS} ${SFML_INCLUDE_DIR})	
+	include_directories(${Boost_INCLUDE_DIRS})	
 	add_executable( ${EXECUTABLE_NAME} ${dependencies}	)	
-	target_link_libraries(${EXECUTABLE_NAME} ${Boost_LIBRARIES})
+	target_link_libraries(${EXECUTABLE_NAME} ${Boost_LIBRARIES} sqlite3 cpprestsdk::cpprest)
 endif()
 ########################################
 ########################################
