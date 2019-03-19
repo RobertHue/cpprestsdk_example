@@ -93,3 +93,7 @@ https://docs.microsoft.com/en-us/previous-versions/visualstudio/visual-studio-20
 
 ## How to read/use the gw2 rest api:
 https://wiki-de.guildwars2.com/wiki/API
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
