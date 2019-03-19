@@ -1,95 +1,191 @@
 // main.cpp
-#include <sqlite3.h>
-#include <iostream>
 
+#include <iostream>
+#include <sstream>      // std::stringstream
+
+
+#include <ppltasks.h>
 #include <cpprest/http_client.h>
 #include <cpprest/filestream.h>
 
-#include <boost/filesystem.hpp>
+#include <array>
+
+#include "Item.h"
+
 
 using namespace utility;                    // Common utilities like string conversions
 using namespace web;                        // Common features like URIs.
 using namespace web::http;                  // Common HTTP functionality
 using namespace web::http::client;          // HTTP client features
+using namespace concurrency;				// Asynchronous
 using namespace concurrency::streams;       // Asynchronous streams
 
-int main()
-{
-	std::cout << "hello cpp rest sdk :D" << std::endl;
-	boost::filesystem::path full_path(boost::filesystem::current_path());
-	std::cout << "Current path is : " << full_path << std::endl;
+typedef std::wstring			String;
+typedef std::wstringstream		StringStream;
 
-	auto fileStream = std::make_shared<ostream>();
+/// @brief:		serialize a given json::value into a c++ string
+/// @arg0:		json_value		the json_value which will get converted to a string in c++
+/// @return:	the c++ string to the passed json::value
+/// @note:		similar to json::value::serialize(ostream), though you have no control on what to do with it
+String get_json_as_string(const json::value &json_value) {
+	StringStream ss;
 
-	// Open stream to output file.
-	pplx::task<void> requestTask =			// requestTask is the asynchronos task.. the response from the server (may arrive fully in the future)
-		// first open a file stream (shared to make it available to all units)
-		fstream::open_ostream(U("results.html"))
-
-		.then([=](ostream outFile)
+	if (json_value.is_array()) {
+		json::array array = json_value.as_array();
+		ss << "[ ";
+		std::for_each(array.begin(), array.end(), [&](web::json::value jv)
 		{
-			*fileStream = outFile;
-
-			// Create http_client to send the request.
-			http_client client(U("https://api.guildwars2.com"));
-
-			// Build request URI and start the request.
-			uri_builder builder(U("/v2/items"));
-			//builder.append_query(U("q"), U("cpprestsdk github"));
-			return client.request(methods::GET, builder.to_string());
-		})
-
-		// Handle response headers arriving.
-		.then([=](http_response response)		// "then" attaches a handler function to the task, which will be called asynchronolsy when the task completes
+			ss << jv.to_string().c_str() << "   ";
+		});
+		ss << " ]";
+	}
+	else if (json_value.is_boolean()) {
+		ss << json_value.as_bool();
+	}
+	else if (json_value.is_double()) {
+		ss << json_value.as_double();
+	}
+	else if (json_value.is_integer()) {
+		ss << json_value.as_integer();
+	}
+	else if (json_value.is_null()) {
+		ss << "NULL";
+	}
+	else if (json_value.is_number()) {
+		ss << json_value.as_number().to_uint64();
+	}
+	else if (json_value.is_object()) {
+		auto dataObj = json_value.as_object();	// "An object is an unordered set of name/value pairs" web::json::object
+		ss << "\n{\n";
+		for (auto iterInner = dataObj.cbegin(); iterInner != dataObj.cend(); ++iterInner)
 		{
-			// Since we know the task has finished, calling ‘get()’ inside the callback function object is never going to block. (task.get)
-			printf("Received response status code:%u\n", response.status_code());
+			auto &propertyName = iterInner->first;		// utility::string_t
+			auto &propertyValue = iterInner->second;	// web::json::value
 
-			// Write response body into the file.
-			//auto json_body = response.extract_json();
-			return response.body().read_to_end(fileStream->streambuf());
-		})
+			ss << "    \"" << propertyName << "\": \"" << get_json_as_string(propertyValue) << "\", \n";
+		}
+		ss << "}"; 
+	}
+	else if (json_value.is_string()) {
+		ss << json_value.as_string().c_str();
+	}
+	else {
+		ss << "UNDEFINED";
+	}
 
-		// Close the file stream, once the writing is done
-		.then([=](size_t)
-		{
-			return fileStream->close();
-		})
+	return ss.str();
+} 
 
-		// you can add a task-based continuation at the end of the chain and handle all errors there.
-		.then([](pplx::task<void> requestTask)
-		{
-
-			// Wait for all the outstanding I/O to complete and handle any exceptions
-			try
+/// @brief:		send an http GET request to the given uri and extract the json from the http body
+/// @arg0:		uri u		the uri the http GET request is being sent to
+/// @return:	the ppl::task of template type web::json::value
+pplx::task<web::json::value> json_request_task(uri u) {
+	// requestTask provides us a placeholder for a value that will be available in the future.
+	//pplx::task<web::json::value> requestTask =		// create_task also possible here
+	return create_task( [=]() ->  pplx::task<web::http::http_response>		// [=] capture all locals by copy into lambda
 			{
-				requestTask.get();	// get any exception procuded down the task chain
-				// note:   Only catch the exceptions that you can handle.
-				// If your app encounters an error that you can't recover from, it's better to let the app crash than to let it continue to run in an unknown state.
+				// Build request URI and start the request.
+				// uri_builder builder(u);
+				std::wcout << u.to_string() << "\n";
+
+				// Create http_client to send the request.
+				web::http::client::http_client client(u);
+				return client.request(web::http::methods::GET);
+			}
+		)
+		// Handle response headers arriving. (task continuation when http header arrives)
+		// "then" attaches a handler function to the task, which will be called asynchronolsy when the task completes
+		// In asynchronous programming, it's common to define a sequence of operations, also known as task chains, in which each continuation executes only when the previous one completes. 
+		// return type of the lambda function is wrapped in a task object
+		.then( [=](pplx::task<web::http::http_response> previousTask) -> pplx::task<web::json::value>	// task-based continuation here!
+			{
+				// Since we know the task has finished, calling ‘get()’ inside the callback function object is never going to block. (task.get)
+				const web::http::http_response&  response = previousTask.get();
+
+				std::wcout << "Received response status code:" << response.status_code() << std::endl;
+
+				// if the status is OK extract the body of the response into a JSON value
+				// works only when the content type is application\json
+				if (response.status_code() == status_codes::OK)
+				{
+					std::wcout << "STATUS_CODE:" << status_codes::OK << " OK \n";
+					return response.extract_json();	// extract the json body from the http response and forward it
+				}
+				// otherwise return an empty JSON value
+				return pplx::task_from_result(web::json::value());
+			}
+		)
+	;
+}
+
+/// main -- test of gw2 rest api -- kinda similar to a web-crawler
+int main(int argc, char* argv[])
+{
+	std::cout << "---------------------------" << std::endl;
+	std::cout << "hello cpp rest sdk :D" << std::endl;
+
+	// auto fileStream = std::make_shared<ostream>();	// so its accessible concurrently to the request-task and main-task
+	// auto jar = std::make_shared<web::json::value>();
+
+	// Build request URI and start the request.
+	uri_builder builder(U("https://api.guildwars2.com/v2/items"));
+	
+	// retrieve the item-list from gw2 rest api
+	auto requested_task = json_request_task(builder.to_uri());
+	
+	requested_task
+		.then([=](pplx::task<web::json::value> previousTask)	// capture all local vars into lambda
+		{
+			// get the JSON value from the task and display content from it
+			const web::json::value& json_value = previousTask.get();	// web::json::value     // Wait for the tasks to finish 
+
+			json_value.serialize(std::wcout);
+
+			const web::json::array ar = json_value.as_array();
+
+			// iterate over each items properties from gw2 rest api
+			std::for_each(
+				ar.cbegin(),
+				ar.cend(),
+				[&](web::json::value jv)
+				{
+					const int id = jv.as_integer();
+					// std::cout << "val : " << id << "\n";
+					uri_builder builder_subEndpoint(uri(builder.to_string() + U("/") + std::to_wstring(id)));
+
+					pplx::task<web::json::value> requested_inner_task = json_request_task(builder_subEndpoint.to_uri());
+
+					const web::json::value json_value2 = requested_inner_task.get();
+					// std::wcout << get_json_as_string(json_value2) << "\n";
+					json_value2.serialize(std::wcout);
+				}
+			);
+		})
+		/////////////////////////////////
+		// exception handling here:
+		.then([=]()
+		{
+			try
+			{ 
+				// exceptions from ascending tasks are passed down here for error handling
+			}
+			catch (json::json_exception &je)
+			{
+				std::cerr << "JSON exception occurred:" << je.what() << "\n";
 			}
 			catch (pplx::task_canceled &tc)
 			{
-				printf("Task canceled exception:%s\n", tc.what());
+				std::cerr << "Task canceled exception occurred:" << tc.what() << "\n";
 			}
 			catch (const std::exception &e)
 			{
-				printf("Error exception:%s\n", e.what());
+				std::cerr << "Error exception occurred:" << e.what() << "\n";
 			}
-
-		})
-	;
+	}).wait();
 
 
-	// Wait for all the outstanding I/O to complete and handle any exceptions
-	try
-	{
-		requestTask.wait();
-	}
-	catch (const std::exception &e)
-	{
-		printf("Error exception:%s\n", e.what());
-	}
 
-	std::cout << "end" << std::endl;
-    return 0;
+	std::cout << "\n\nend" << std::endl;
+	std::cout << "---------------------------" << std::endl;
+	return 0;
 }
