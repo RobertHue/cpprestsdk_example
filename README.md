@@ -9,22 +9,27 @@ and extract the json from the http body
 this function has the following prototype:
 
 '''
+
 /// @brief:		send an http GET request to the given uri and extract the json from the http body
 /// @arg0:		uri u		the uri the http GET request is being sent to
 /// @return:	the ppl::task of template type web::json::value
 pplx::task<web::json::value> json_request_task(uri u);
+
 '''
 
 you can retrieve the pplx::task from the json_request_task-function with the following code snippet:
 
 '''
-	// retrieve the item-list from gw2 rest api
-	auto requested_task = json_request_task(builder.to_uri());
+
+// retrieve the item-list from gw2 rest api
+auto requested_task = json_request_task(builder.to_uri());
+	
 '''
 
 after retrieving the pplx::task this way you can add continuation chains with the .then method, like following code snippet:
 
 '''
+
 .then([=](pplx::task<web::json::value> previousTask)	// capture all local vars into lambda
 	{
 		// get the JSON value from the task and display content from it
@@ -45,11 +50,13 @@ after retrieving the pplx::task this way you can add continuation chains with th
 		);
 	}
 );
+
 '''
 
 also exception handling can be handled in another chain contination:
 
 '''
+
 .then([=]()
 	{
 		try
