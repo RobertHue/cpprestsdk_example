@@ -45,7 +45,7 @@ after retrieving the pplx::task this way you can add continuation chains with th
 		);
 	}
 );
-```
+``` 
 
 also exception handling can be handled in another chain contination:
 
@@ -72,9 +72,10 @@ also exception handling can be handled in another chain contination:
 );
 ```
 
-## ToDO / Future
+## ToDO / Future 
 
-I hope to add more functionality for it to be crawling through the gw2 rest api and printing out the items on some GUI
+I hope to add more functionality for it to be crawling through the gw2 rest api and 
+printing out the items on some GUI
 
 ## Information
 
