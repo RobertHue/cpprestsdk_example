@@ -118,9 +118,50 @@ pplx::task<web::json::value> json_request_task(uri u) {
 	;
 }
 
+#include <QApplication>
+#include <QTranslator>
+
+#include <QPushButton>
+#include <QLabel>
+
+#include <QFormLayout>
+#include <QGridLayout>
+
 /// main -- test of gw2 rest api -- kinda similar to a web-crawler
 int main(int argc, char* argv[])
 {
+	QApplication app(argc, argv);
+	QLabel* nameLabel;
+	QLabel* emailLabel;
+	QLabel* ageLabel;
+	QPushButton* nameLineEdit = new QPushButton("someB1");
+	QPushButton* emailLineEdit = new QPushButton("someB2");
+	QPushButton* ageSpinBox = new QPushButton("someB3");
+
+	nameLabel = new QLabel(QLabel::tr("&Name:"));
+	nameLabel->setBuddy(nameLineEdit);
+
+	emailLabel = new QLabel(QLabel::tr("&Name:"));
+	emailLabel->setBuddy(emailLineEdit);
+
+	ageLabel = new QLabel(QLabel::tr("&Name:"));
+	ageLabel->setBuddy(ageSpinBox);
+
+	QGridLayout *gridLayout = new QGridLayout;
+	gridLayout->addWidget(nameLabel, 0, 0);
+	gridLayout->addWidget(nameLineEdit, 0, 1);
+	gridLayout->addWidget(emailLabel, 1, 0);
+	gridLayout->addWidget(emailLineEdit, 1, 1);
+	gridLayout->addWidget(ageLabel, 2, 0);
+	gridLayout->addWidget(ageSpinBox, 2, 1);
+
+	QWidget *window = new QWidget;
+	window->setLayout(gridLayout);
+
+	window->show();
+	return app.exec();
+
+
 	std::cout << "---------------------------" << std::endl;
 	std::cout << "hello cpp rest sdk :D" << std::endl;
 
