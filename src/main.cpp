@@ -2,7 +2,7 @@
 
 #include <iostream>
 #include <sstream>      // std::stringstream
-
+#include <string>  // for std::to_string
 
 #include <ppltasks.h>
 #include <cpprest/http_client.h>
@@ -35,7 +35,7 @@ String get_json_as_string(const json::value &json_value) {
 		ss << "[ ";
 		std::for_each(array.begin(), array.end(), [&](web::json::value jv)
 		{
-			ss << jv.to_string().c_str() << "   ";
+			ss << jv.as_string() << "   ";
 		});
 		ss << " ]";
 	}
@@ -119,48 +119,20 @@ pplx::task<web::json::value> json_request_task(uri u) {
 }
 
 #include <QApplication>
-#include <QTranslator>
+#include "QJsonWidget.h"
 
-#include <QPushButton>
-#include <QLabel>
-
-#include <QFormLayout>
-#include <QGridLayout>
+#include <qstringlist.h>
+#include <qabstractitemmodel.h>
+#include <qstringlistmodel.h>
 
 /// main -- test of gw2 rest api -- kinda similar to a web-crawler
 int main(int argc, char* argv[])
 {
+	auto shared_model = QSharedPointer<QStringListModel>::create();	// you cannot simply add a row to it
+
 	QApplication app(argc, argv);
-	QLabel* nameLabel;
-	QLabel* emailLabel;
-	QLabel* ageLabel;
-	QPushButton* nameLineEdit = new QPushButton("someB1");
-	QPushButton* emailLineEdit = new QPushButton("someB2");
-	QPushButton* ageSpinBox = new QPushButton("someB3");
-
-	nameLabel = new QLabel(QLabel::tr("&Name:"));
-	nameLabel->setBuddy(nameLineEdit);
-
-	emailLabel = new QLabel(QLabel::tr("&Name:"));
-	emailLabel->setBuddy(emailLineEdit);
-
-	ageLabel = new QLabel(QLabel::tr("&Name:"));
-	ageLabel->setBuddy(ageSpinBox);
-
-	QGridLayout *gridLayout = new QGridLayout;
-	gridLayout->addWidget(nameLabel, 0, 0);
-	gridLayout->addWidget(nameLineEdit, 0, 1);
-	gridLayout->addWidget(emailLabel, 1, 0);
-	gridLayout->addWidget(emailLineEdit, 1, 1);
-	gridLayout->addWidget(ageLabel, 2, 0);
-	gridLayout->addWidget(ageSpinBox, 2, 1);
-
-	QWidget *window = new QWidget;
-	window->setLayout(gridLayout);
-
-	window->show();
-	return app.exec();
-
+	QJsonWidget *jwidget = new QJsonWidget(0,0,shared_model.get());
+	jwidget->show(); 
 
 	std::cout << "---------------------------" << std::endl;
 	std::cout << "hello cpp rest sdk :D" << std::endl;
@@ -170,63 +142,74 @@ int main(int argc, char* argv[])
 
 	// Build request URI and start the request.
 	uri_builder builder(U("https://api.guildwars2.com/v2/items"));
-	
+
 	// retrieve the item-list from gw2 rest api
 	auto requested_task = json_request_task(builder.to_uri());
-	
+
 	requested_task
 		.then([=](pplx::task<web::json::value> previousTask)	// capture all local vars into lambda
+	{
+		// get the JSON value from the task and display content from it
+		const web::json::value& json_value = previousTask.get();	// web::json::value     // Wait for the tasks to finish 
+
+		//json_value.serialize(std::wcout);
+
+		const web::json::array ar = json_value.as_array();
+
+		// iterate over each items properties from gw2 rest api
+		std::for_each(
+			ar.cbegin(),
+			ar.cend(),
+			[&](web::json::value jv)
 		{
-			// get the JSON value from the task and display content from it
-			const web::json::value& json_value = previousTask.get();	// web::json::value     // Wait for the tasks to finish 
+			const int id = jv.as_integer();
+			// std::cout << "val : " << id << "\n";
+			uri_builder builder_subEndpoint(uri(builder.to_string() + U("/") + std::to_wstring(id)));
 
-			json_value.serialize(std::wcout);
+			pplx::task<web::json::value> requested_inner_task = json_request_task(builder_subEndpoint.to_uri());
 
-			const web::json::array ar = json_value.as_array();
+			const web::json::value json_value2 = requested_inner_task.get();
+			// std::wcout << get_json_as_string(json_value2) << "\n";
+			// json_value2.serialize(std::wcout);
 
-			// iterate over each items properties from gw2 rest api
-			std::for_each(
-				ar.cbegin(),
-				ar.cend(),
-				[&](web::json::value jv)
-				{
-					const int id = jv.as_integer();
-					// std::cout << "val : " << id << "\n";
-					uri_builder builder_subEndpoint(uri(builder.to_string() + U("/") + std::to_wstring(id)));
 
-					pplx::task<web::json::value> requested_inner_task = json_request_task(builder_subEndpoint.to_uri());
-
-					const web::json::value json_value2 = requested_inner_task.get();
-					// std::wcout << get_json_as_string(json_value2) << "\n";
-					json_value2.serialize(std::wcout);
-				}
-			);
-		})
+			// first add a row to the model, and then change it's data to the givenString
+			const std::string givenSandardString = std::to_string(id);
+			QString givenString = QString::fromStdString(givenSandardString);
+			std::cout << "givenString: " << givenString.toStdString() << std::endl;
+			if (shared_model->insertRow(shared_model->rowCount())) {
+				QModelIndex index = shared_model->index(shared_model->rowCount() - 1, 0);
+				shared_model->setData(index, givenString);
+			} 
+		}
+		);
+	})
 		/////////////////////////////////
 		// exception handling here:
 		.then([=]()
+	{
+		try
 		{
-			try
-			{ 
-				// exceptions from ascending tasks are passed down here for error handling
-			}
-			catch (json::json_exception &je)
-			{
-				std::cerr << "JSON exception occurred:" << je.what() << "\n";
-			}
-			catch (pplx::task_canceled &tc)
-			{
-				std::cerr << "Task canceled exception occurred:" << tc.what() << "\n";
-			}
-			catch (const std::exception &e)
-			{
-				std::cerr << "Error exception occurred:" << e.what() << "\n";
-			}
-	}).wait();
-
-
-
+			// exceptions from ascending tasks are passed down here for error handling
+		}
+		catch (json::json_exception &je)
+		{
+			std::cerr << "JSON exception occurred:" << je.what() << "\n";
+		}
+		catch (pplx::task_canceled &tc)
+		{
+			std::cerr << "Task canceled exception occurred:" << tc.what() << "\n";
+		}
+		catch (const std::exception &e)
+		{
+			std::cerr << "Error exception occurred:" << e.what() << "\n";
+		}
+	});
 	std::cout << "\n\nend" << std::endl;
 	std::cout << "---------------------------" << std::endl;
-	return 0;
+	// return 0;
+
+
+	return app.exec();
+
 }
